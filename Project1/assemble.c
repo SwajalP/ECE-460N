@@ -193,13 +193,106 @@ void secondPass(FILE *infile, FILE *outfile) {
 
 }
 
-int assembleInstruction(char *opcode, char *arg1, char *arg2,
-                        char *arg3, char *arg4, int location) {
-        if (strcmp(opcode, "\0") == 0 || opcode == NULL){
-            exit(4);
-        }
-    
-}
+    uint16_t addandxorInstruction(int opcode, char* arg1, char* arg2, char* arg3){
+         uint16_t num = 0;
+         num += opcode << 12;
+         num += toNum(++arg1) << 9;
+         num += toNum(++arg2) << 6;
+
+         if(arg3[0] == 'r'){
+            num += toNum(++arg3);
+         }else{
+            num += 1 << 5;
+            num += toNum(arg3);
+         }
+      }
+
+    uint16_t jmpjsrrInstruction(int opcode, char* arg1, char* arg2, char* arg3){
+        uint16_t num = 0;
+        num += opcode << 12;
+        num += toNum(++arg1) << 6;
+    }
+
+    uint16_t jsrInstruction(int opcode, char* arg1){
+        uint16_t num = 0;
+        num += opcode << 12;
+        num += 1 << 11;
+        num += toNum(arg1);
+    }
+
+    uint16_t ldbldwstbstwInstruction(int opcode, char* arg1, char* arg2, char* arg3){
+         uint16_t num = 0;
+         num += opcode << 12;
+         num += toNum(++arg1) << 9;
+         num += toNum(++arg2) << 6;
+         num += toNum(arg3);
+      }
+
+      uint16_t leaInstruction(int opcode, char* arg1, char* arg2){
+         uint16_t num = 0;
+         num += opcode << 12;
+         num += toNum(++arg1) << 9;
+         num += toNum(arg2);
+      }
+
+      uint16_t notInstruction(int opcode, char* arg1, char* arg2){
+         uint16_t num = 0;
+         num += opcode << 12;
+         num += toNum(++arg1) << 9;
+         num += toNum(++arg2) << 6;
+         num += 1 << 5;
+         num += 0x1F;
+      }
+
+      uint16_t notInstruction(int opcode, char* arg1, char* arg2){
+         uint16_t num = 0;
+         num += opcode << 12;
+         num += toNum(++arg1) << 9;
+         num += toNum(++arg2) << 6;
+         num += 1 << 5;
+         num += 0x1F;
+      }
+
+      uint16_t retrtiInstruction(int opcode, char* arg1, char* arg2){
+         uint16_t num = 0;
+         num += opcode << 12;
+         if(opcode == 0xC){
+            num += 0x7 << 6;
+         }
+      }
+
+      uint16_t lshrshIntruction(int opcode, char* arg1, char* arg2, char* arg3, int idBits){
+         uint16_t num = 0;
+         num += opcode << 12;
+         num += toNum(++arg1) << 9;
+         num += toNum(++arg2) << 6;
+         num += idBits << 4;
+         num += toNum(arg3);
+      }
+
+      uint16_t lshrshIntruction(int opcode, char* arg1, char* arg2, char* arg3, int idBits){
+         uint16_t num = 0;
+         num += opcode << 12;
+         num += toNum(++arg1) << 9;
+         num += toNum(++arg2) << 6;
+         num += idBits << 4;
+         num += toNum(arg3);
+      }
+
+      uint16_t trapInstruction(int opcode, char* arg1){
+        uint16_t num = 0;
+        num += opcode << 12;
+        num += toNum(arg1);
+      }
+
+
+
+
+
+
+
+
+
 
 int getRegister(char *regStr) {
     if (regStr == NULL) return -1;
