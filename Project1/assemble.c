@@ -61,10 +61,9 @@ int toNum(char *pStr) {
 int isOpcode(char *str) {
     const char *opcodes[] = {
         "add", "and", "br", "brn", "brz", "brp", "brzp", "brnp", "brnz",
-        "brnzp", "jmp", "jsr", "jsrr", "ld", "ldi", "ldr", "lea", "not",
-        "ret", "rti", "st", "sti", "str", "trap",
-        ".orig", ".end", ".fill", ".blkw", ".stringz"
-    };
+        "brnzp", "jmp", "jsr", "jsrr", "lea", "not",
+        "ret", "rti", "trap", "xor", "lshf", "rshfl", "rshfa",
+        "ldb", "ldw", "stb", "stw", ".orig", ".end", ".fill"};
 
     const int number_of_opcodes = sizeof(opcodes) / sizeof(opcodes[0]);
     for (int i = 0; i < number_of_opcodes; i++) {
@@ -179,6 +178,7 @@ void firstPass(FILE *infile, FILE *outfile) {
 
         if(label[0] != '\0' && startedCode){
             addSymbol(label, PC);
+            PC+=2;
         }
 
 
@@ -199,6 +199,7 @@ void secondPass(FILE *infile, FILE *outfile) {
     int ret; 
      while(1){
          ret = readAndParse(infile, line, &label, &opcode, &arg1, &arg2, &arg3, &arg4);
+
         if(ret == DONE) break;
         if(ret == EMPTY_LINE) continue;
 
@@ -208,48 +209,60 @@ void secondPass(FILE *infile, FILE *outfile) {
         }
 
         if(strcmp(opcode, ".end") == 0){
-            break;
+            exit(4);
         }
 
-        if(startedCode && opcode != NULL){
-            uint16_t address1 = findSymbol(arg1);
-            uint16_t address2 = findSymbol(arg2);
-            uint16_t address3 = findSymbol(arg3);
-            uint16_t address4 = findSymbol(arg4);
+        if(startedCode && *opcode != '\0'){
+            // int address1 = findSymbol(arg1);
+            // int address2 = findSymbol(arg2);
+            // int address3 = findSymbol(arg3);
+            // int address4 = findSymbol(arg4);
 
             char placeholderNum1[17];
             char placeholderNum2[17];
             char placeholderNum3[17];
             char placeholderNum4[17];
-
+            
+            printf("DEBUG: arg1='%s' arg2='%s' arg3='%s' arg4='%s'\n", arg1, arg2, arg3, arg4);
             //Filling in the labels with addresses if we could find one
-            if(address1 != -1){
-                sprintf(placeholderNum1, "#%d", address1);
+            if(arg1[0] != '\0' && arg1[0] != 'r' && arg1[0] != '#' && !(arg1[0] == '0' && arg1[1] == 'x')){
+                sprintf(placeholderNum1, "#%d", findSymbol(arg1));
                 arg1 = placeholderNum1;
             }
-            if(address2 != -1){
-                sprintf(placeholderNum2, "#%d", address2);
+            if(arg2[0] != '\0' && arg2[0] != 'r' && arg2[0] != '#' && !(arg2[0] == '0' && arg2[1] == 'x')){
+                sprintf(placeholderNum2, "#%d", findSymbol(arg2));
                 arg2 = placeholderNum2;
             }
-            if(address3 != -1){
-                sprintf(placeholderNum3, "#%d", address3);
+            if(arg3[0] != '\0' && arg3[0] != 'r' && arg3[0] != '#' && !(arg3[0] == '0' && arg3[1] == 'x')){
+                sprintf(placeholderNum3, "#%d", findSymbol(arg3));
                 arg3 = placeholderNum3;
             }
-            if(address4 != -1){
-                sprintf(placeholderNum4, "#%d", address4);
+            if(arg4[0] != '\0' && arg4[0] != 'r' && arg4[0] != '#' && !(arg4[0] == '0' && arg4[1] == 'x')){
+                sprintf(placeholderNum4, "#%d", findSymbol(arg4));
                 arg4 = placeholderNum4;
             }
+
+            // if(address2 != -1){
+            //     sprintf(placeholderNum2, "#%d", address2);
+            //     arg2 = placeholderNum2;
+            // }
+            // if(address3 != -1){
+            //     sprintf(placeholderNum3, "#%d", address3);
+            //     arg3 = placeholderNum3;
+            // }
+            // if(address4 != -1){
+            //     sprintf(placeholderNum4, "#%d", address4);
+            //     arg4 = placeholderNum4;
+            // }
 
             //Calling all the opcodes now
             uint16_t printedCode = 0;
 
             if(strcmp(opcode, "add") == 0) {
-                fprintf(outfile, "Got to add");
                 fprintf(stderr, "DEBUG add: arg1='%s' arg2='%s' arg3='%s'\n", arg1, arg2, arg3);
                 printedCode = addandxorInstruction(0x1, arg1, arg2, arg3);
-                fprintf(outfile, "finshed add?");
             } else if(strcmp(opcode, "and") == 0) {
-                printedCode = addandxorInstruction(0x1, arg1, arg2, arg3);
+                printedCode = addandxorInstruction(0x5, arg1, arg2, arg3);
             } else if(strncmp(opcode, "br", 2) == 0) {
                 printedCode = brInstruction(0x0, arg1, opcode + 2);
             } else if(strcmp(opcode, "jmp") == 0) {
@@ -265,6 +278,7 @@ void secondPass(FILE *infile, FILE *outfile) {
             } else if(strcmp(opcode, "lea") == 0) {
                 printedCode = leaInstruction(0xE, arg1, arg2);
             } else if(strcmp(opcode, "not") == 0) {
+                printf("hi");
                 printedCode = notInstruction(0x9, arg1, arg2);
             } else if(strcmp(opcode, "ret") == 0) {
                 printedCode = retrtiInstruction(0xC, arg1, arg2);
@@ -284,11 +298,13 @@ void secondPass(FILE *infile, FILE *outfile) {
                 printedCode = trapInstruction(0xF, arg1);
             } else if(strcmp(opcode, "xor") == 0) {
                 printedCode = addandxorInstruction(0x9, arg1, arg2, arg3);
-            } else {
+                printf("Finished xor");
+            } else if(strcmp(opcode, ".fill") == 0){
+                continue;
                 // invalid opcode
                 //Delete this later
-                printf("Invalid Opcode!");
-                exit(4);
+                //printf("Invalid Opcode!");
+                //exit(4);
             }
 
             fprintf(outfile, "0x%04X\n", printedCode); //Printing number as hex
@@ -301,17 +317,17 @@ void secondPass(FILE *infile, FILE *outfile) {
 
     uint16_t addandxorInstruction(int opcode, char* arg1, char* arg2, char* arg3){
          uint16_t num = 0;
-         num += opcode << 12;
+         num += opcode << 12    ;
          num += getRegister(arg1) << 9;
          num += getRegister(arg2) << 6;
 
-         if(arg3[0] == 'r'){
+         if((arg3[0] == 'r')){
+            printf("Did we make it? %04X\n", num);
             num += getRegister(arg3);
          }else{
             num += 1 << 5;
             num += toNum(arg3);
          }
-
          return num;
       }
 
