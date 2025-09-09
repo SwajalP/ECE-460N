@@ -3,9 +3,29 @@
 #include <string.h>
 #include <ctype.h>
 #include <limits.h>
-#include "assemble.h"
+#include <stdint.h>
+#include <stdbool.h>
 
 #define MAX_LINE_LENGTH 255
+enum { DONE, OK, EMPTY_LINE };
+
+
+#define OK 0
+#define EMPTY_LINE 1
+#define DONE 2
+
+int addandxorInstruction(int opcode, char* arg1, char* arg2, char* arg3);
+int jmpjsrrInstruction(int opcode, char* arg1, char* arg2, char* arg3);
+int jsrInstruction(int opcode, char* arg1, int currAddr);
+int ldbldwstbstwInstruction(int opcode, char* arg1, char* arg2, char* arg3);
+int leaInstruction(int opcode, char* arg1, char* arg2, int currAddr);
+int notInstruction(int opcode, char* arg1, char* arg2);
+int retrtiInstruction(int opcode, char* arg1, char* arg2);
+int lshrshInstruction(int opcode, char* arg1, char* arg2, char* arg3, int idBits);
+int trapInstruction(int opcode, char* arg1);
+int brInstruction(int opcode, char* arg1, char* conditionBits, int currAddr);
+int getRegister(char *regStr);
+int getImmediate(char *arg, int currAddr, const char *opcode);
 
 int toNum(char *pStr) {
     char *t_ptr;
@@ -63,7 +83,9 @@ int isOpcode(char *str) {
         "add", "and", "br", "brn", "brz", "brp", "brzp", "brnp", "brnz",
         "brnzp", "jmp", "jsr", "jsrr", "lea", "not",
         "ret", "rti", "trap", "xor", "lshf", "rshfl", "rshfa",
-        "ldb", "ldw", "stb", "stw", ".orig", ".end", ".fill"};
+        "ldb", "ldw", "stb", "stw", "nop", "halt",
+        ".orig", ".end", ".fill"
+    };
 
     const int number_of_opcodes = sizeof(opcodes) / sizeof(opcodes[0]);
     for (int i = 0; i < number_of_opcodes; i++) {
@@ -122,9 +144,10 @@ typedef struct {
 
 Symbol symbolTable[255];
 int symbolCount = 0;
+int PC = 0; 
 
 int addSymbol(char *label, int address) {
-    if (label == NULL) return 0;
+    if (label == NULL || strlen(label) == 0) return 0;
     if (symbolCount > 254) {
         printf("Error: symbol table overflow\n");
         exit(4);
@@ -143,7 +166,6 @@ int addSymbol(char *label, int address) {
     return 1;
 }
 
-
 int findSymbol(char *label) {
     for(int i = 0; i < symbolCount; i++){
         if (strcmp(symbolTable[i].label, label) == 0){
@@ -157,11 +179,10 @@ void firstPass(FILE *infile, FILE *outfile) {
     char line[MAX_LINE_LENGTH + 1];
     char *label, *opcode, *arg1, *arg2, *arg3, *arg4;
     int ret; 
-    int PC = 0;
     bool startedCode = false;
 
     while(1){
-         ret = readAndParse(infile, line, &label, &opcode, &arg1, &arg2, &arg3, &arg4);
+        ret = readAndParse(infile, line, &label, &opcode, &arg1, &arg2, &arg3, &arg4);
         if(ret == DONE) break;
         if(ret == EMPTY_LINE) continue;
 
@@ -176,19 +197,12 @@ void firstPass(FILE *infile, FILE *outfile) {
             break;
         }
 
-        if(label[0] != '\0' && startedCode){
-            addSymbol(label, PC);
-            PC+=2;
+        if(startedCode){
+            if(strlen(label) > 0){
+                addSymbol(label, PC);
+            }
+            PC += 2;
         }
-
-
-        // if (strcmp(opcode, ".blkw") == 0) {
-        //     PC += toNum(arg1);
-        // } else if (strcmp(opcode, ".stringz") == 0) {
-        //     PC += (int)strlen(arg1) + 1;  
-        // } else {
-        //     PC++;
-        // }
     }
 }
 
@@ -196,79 +210,49 @@ void secondPass(FILE *infile, FILE *outfile) {
     bool startedCode = false;
     char line[MAX_LINE_LENGTH + 1];
     char *label, *opcode, *arg1, *arg2, *arg3, *arg4;
-    int ret; 
-     while(1){
-         ret = readAndParse(infile, line, &label, &opcode, &arg1, &arg2, &arg3, &arg4);
-
+    int ret;
+    PC = 0;  
+    
+    while(1){
+        ret = readAndParse(infile, line, &label, &opcode, &arg1, &arg2, &arg3, &arg4);
         if(ret == DONE) break;
         if(ret == EMPTY_LINE) continue;
 
         if(strcmp(opcode, ".orig") == 0){
+            PC = toNum(arg1);
             startedCode = true;
             continue;
         }
 
         if(strcmp(opcode, ".end") == 0){
-            exit(4);
+            break;
         }
 
-        if(startedCode && *opcode != '\0'){
-            // int address1 = findSymbol(arg1);
-            // int address2 = findSymbol(arg2);
-            // int address3 = findSymbol(arg3);
-            // int address4 = findSymbol(arg4);
-
-            char placeholderNum1[17];
-            char placeholderNum2[17];
-            char placeholderNum3[17];
-            char placeholderNum4[17];
-            
-            printf("DEBUG: arg1='%s' arg2='%s' arg3='%s' arg4='%s'\n", arg1, arg2, arg3, arg4);
-            //Filling in the labels with addresses if we could find one
-            if(arg1[0] != '\0' && arg1[0] != 'r' && arg1[0] != '#' && !(arg1[0] == '0' && arg1[1] == 'x')){
-                sprintf(placeholderNum1, "#%d", findSymbol(arg1));
-                arg1 = placeholderNum1;
-            }
-            if(arg2[0] != '\0' && arg2[0] != 'r' && arg2[0] != '#' && !(arg2[0] == '0' && arg2[1] == 'x')){
-                sprintf(placeholderNum2, "#%d", findSymbol(arg2));
-                arg2 = placeholderNum2;
-            }
-            if(arg3[0] != '\0' && arg3[0] != 'r' && arg3[0] != '#' && !(arg3[0] == '0' && arg3[1] == 'x')){
-                sprintf(placeholderNum3, "#%d", findSymbol(arg3));
-                arg3 = placeholderNum3;
-            }
-            if(arg4[0] != '\0' && arg4[0] != 'r' && arg4[0] != '#' && !(arg4[0] == '0' && arg4[1] == 'x')){
-                sprintf(placeholderNum4, "#%d", findSymbol(arg4));
-                arg4 = placeholderNum4;
-            }
-
-            // if(address2 != -1){
-            //     sprintf(placeholderNum2, "#%d", address2);
-            //     arg2 = placeholderNum2;
-            // }
-            // if(address3 != -1){
-            //     sprintf(placeholderNum3, "#%d", address3);
-            //     arg3 = placeholderNum3;
-            // }
-            // if(address4 != -1){
-            //     sprintf(placeholderNum4, "#%d", address4);
-            //     arg4 = placeholderNum4;
-            // }
-
-            //Calling all the opcodes now
+        if(startedCode && strlen(opcode) > 0){
             uint16_t printedCode = 0;
 
             if(strcmp(opcode, "add") == 0) {
-                fprintf(stderr, "DEBUG add: arg1='%s' arg2='%s' arg3='%s'\n", arg1, arg2, arg3);
                 printedCode = addandxorInstruction(0x1, arg1, arg2, arg3);
             } else if(strcmp(opcode, "and") == 0) {
                 printedCode = addandxorInstruction(0x5, arg1, arg2, arg3);
-            } else if(strncmp(opcode, "br", 2) == 0) {
-                printedCode = brInstruction(0x0, arg1, opcode + 2);
+            } else if(strcmp(opcode, "br") == 0 || strcmp(opcode, "brnzp") == 0) {
+                printedCode = brInstruction(0x0, arg1, "nzp", PC);
+            } else if(strcmp(opcode, "brn") == 0) {
+                printedCode = brInstruction(0x0, arg1, "n", PC);
+            } else if(strcmp(opcode, "brz") == 0) {
+                printedCode = brInstruction(0x0, arg1, "z", PC);
+            } else if(strcmp(opcode, "brp") == 0) {
+                printedCode = brInstruction(0x0, arg1, "p", PC);
+            } else if(strcmp(opcode, "brnz") == 0) {
+                printedCode = brInstruction(0x0, arg1, "nz", PC);
+            } else if(strcmp(opcode, "brnp") == 0) {
+                printedCode = brInstruction(0x0, arg1, "np", PC);
+            } else if(strcmp(opcode, "brzp") == 0) {
+                printedCode = brInstruction(0x0, arg1, "zp", PC);
             } else if(strcmp(opcode, "jmp") == 0) {
                 printedCode = jmpjsrrInstruction(0xC, arg1, arg2, arg3);
             } else if(strcmp(opcode, "jsr") == 0) {
-                printedCode = jsrInstruction(0x4, arg1);
+                printedCode = jsrInstruction(0x4, arg1, PC);
             } else if(strcmp(opcode, "jsrr") == 0) {
                 printedCode = jmpjsrrInstruction(0x4, arg1, arg2, arg3);
             } else if(strcmp(opcode, "ldb") == 0) {
@@ -276,174 +260,236 @@ void secondPass(FILE *infile, FILE *outfile) {
             } else if(strcmp(opcode, "ldw") == 0) {
                 printedCode = ldbldwstbstwInstruction(0x6, arg1, arg2, arg3);
             } else if(strcmp(opcode, "lea") == 0) {
-                printedCode = leaInstruction(0xE, arg1, arg2);
+                printedCode = leaInstruction(0xE, arg1, arg2, PC);
             } else if(strcmp(opcode, "not") == 0) {
-                printf("hi");
                 printedCode = notInstruction(0x9, arg1, arg2);
             } else if(strcmp(opcode, "ret") == 0) {
                 printedCode = retrtiInstruction(0xC, arg1, arg2);
             } else if(strcmp(opcode, "rti") == 0) {
                 printedCode = retrtiInstruction(0x8, arg1, arg2);
             } else if(strcmp(opcode, "lshf") == 0) {
-                printedCode = lshrshIntruction(0xD, arg1, arg2, arg3, 0x0);
+                printedCode = lshrshInstruction(0xD, arg1, arg2, arg3, 0x0);
             } else if(strcmp(opcode, "rshfl") == 0) {
-                printedCode = lshrshIntruction(0xD, arg1, arg2, arg3, 0x1);
+                printedCode = lshrshInstruction(0xD, arg1, arg2, arg3, 0x1);
             } else if(strcmp(opcode, "rshfa") == 0) {
-                printedCode = lshrshIntruction(0xD, arg1, arg2, arg3, 0x3);
+                printedCode = lshrshInstruction(0xD, arg1, arg2, arg3, 0x3);
             } else if(strcmp(opcode, "stb") == 0) {
                 printedCode = ldbldwstbstwInstruction(0x3, arg1, arg2, arg3);
             } else if(strcmp(opcode, "stw") == 0) {
                 printedCode = ldbldwstbstwInstruction(0x7, arg1, arg2, arg3);
             } else if(strcmp(opcode, "trap") == 0) {
+                int trapVec = toNum(arg1);
+                if(trapVec < 0 || trapVec > 0xFF) {
+                    printf("Error: TRAP vector out of range: %d\n", trapVec);
+                    exit(4);
+                }
                 printedCode = trapInstruction(0xF, arg1);
+            } else if(strcmp(opcode, "halt") == 0) {
+                printedCode = 0xF025;  // TRAP x25
             } else if(strcmp(opcode, "xor") == 0) {
-                printedCode = addandxorInstruction(0x9, arg1, arg2, arg3);
-                printf("Finished xor");
+    printedCode = addandxorInstruction(0x9, arg1, arg2, arg3);
+} else if (strcmp(opcode, "nop") == 0) {
+                printedCode = 0x0000;
             } else if(strcmp(opcode, ".fill") == 0){
-                continue;
-                // invalid opcode
-                //Delete this later
-                //printf("Invalid Opcode!");
-                //exit(4);
+                printedCode = toNum(arg1) & 0xFFFF;
             }
 
-            fprintf(outfile, "0x%04X\n", printedCode); //Printing number as hex
-
-
+            fprintf(outfile, "0x%04X\n", printedCode);
+            PC += 2;
         }
     }
-
 }
 
-    uint16_t addandxorInstruction(int opcode, char* arg1, char* arg2, char* arg3){
-         uint16_t num = 0;
-         num += opcode << 12    ;
-         num += getRegister(arg1) << 9;
-         num += getRegister(arg2) << 6;
 
-         if((arg3[0] == 'r')){
-            printf("Did we make it? %04X\n", num);
-            num += getRegister(arg3);
-         }else{
-            num += 1 << 5;
-            num += toNum(arg3) & 0x1F;
-         }
-         return num;
-      }
+int addandxorInstruction(int opcode, char* arg1, char* arg2, char* arg3){
+    int num = 0;
+    num |= (opcode & 0xF) << 12;     
+    num |= (getRegister(arg1) & 0x7) << 9; 
+    num |= (getRegister(arg2) & 0x7) << 6;
 
-    uint16_t jmpjsrrInstruction(int opcode, char* arg1, char* arg2, char* arg3){
-        uint16_t num = 0;
-        num += opcode << 12;
+    if(arg3[0] == 'r' || arg3[0] == 'R'){ 
+        num |= (getRegister(arg3) & 0x7); 
+    } else {                                 
+        num |= 1 << 5;                     
+        num |= (toNum(arg3) & 0x1F);    
+    }
+    return num;
+}
+
+int jmpjsrrInstruction(int opcode, char* arg1, char* arg2, char* arg3){
+    int num = 0;
+    num += opcode << 12;
+    
+    if(opcode == 0xC) {
         num += getRegister(arg1) << 6;
-        return num;
+    } else {
+        num += getRegister(arg1) << 6;
     }
+    
+    return num;
+}
 
-    uint16_t jsrInstruction(int opcode, char* arg1){
-        uint16_t num = 0;
-        num += opcode << 12;
-        num += 1 << 11;
-        num += toNum(arg1);
-        return num;
+int jsrInstruction(int opcode, char* arg1, int currAddr){
+    int num = 0;
+    num += opcode << 12;
+    num += 1 << 11;
+
+    if(arg1[0] == '#' || arg1[0] == 'x') {
+        num += toNum(arg1) & 0x7FF;
+    } else {
+
+        int symAddr = findSymbol(arg1);
+        if(symAddr == -1) {
+            printf("Error: undefined symbol '%s'\n", arg1);
+            exit(4);
+        }
+        int offset = (symAddr - (currAddr + 2)) / 2;
+        if(offset < -1024 || offset > 1023) {
+            printf("Error: JSR offset out of range\n");
+            exit(4);
+        }
+        num += offset & 0x7FF;
     }
+    
+    return num;
+}
 
-    uint16_t ldbldwstbstwInstruction(int opcode, char* arg1, char* arg2, char* arg3){
-         uint16_t num = 0;
-         num += opcode << 12;
-         num += getRegister(arg1) << 9;
-         num += getRegister(arg2) << 6;
-         num += toNum(arg3) & 0x3F;
-         return num;
-      }
+int ldbldwstbstwInstruction(int opcode, char* arg1, char* arg2, char* arg3){
+    int num = 0;
+    num += opcode << 12;
+    
+    if(opcode == 0x3 || opcode == 0x7) {
 
-      uint16_t leaInstruction(int opcode, char* arg1, char* arg2){
-         uint16_t num = 0;
-         num += opcode << 12;
-         num += getRegister(arg1) << 9;
-         num += toNum(arg2) & 0x1FF;
-         return num;
-      }
+        num += getRegister(arg1) << 9;
+    } else {
 
-      uint16_t notInstruction(int opcode, char* arg1, char* arg2){
-         uint16_t num = 0;
-         num += opcode << 12;
-         num += getRegister(arg1) << 9;
-         num += getRegister(arg2) << 6;
-         num += 1 << 5;
-         num += 0x1F;
-         return num;
-      }
+        num += getRegister(arg1) << 9;
+    }
+    
+    num += getRegister(arg2) << 6;
+    
 
-      uint16_t retrtiInstruction(int opcode, char* arg1, char* arg2){
-         uint16_t num = 0;
-         num += opcode << 12;
-         if(opcode == 0xC){
-            num += 0x7 << 6;
-         }
-         return num;
-      }
+        int offset6 = toNum(arg3);
+    if (offset6 < -32 || offset6 > 31) { printf("Error: offset6 out of range\n"); exit(4); }
+    num |= offset6 & 0x3F;
 
-      uint16_t lshrshIntruction(int opcode, char* arg1, char* arg2, char* arg3, int idBits){
-         uint16_t num = 0;
-         num += opcode << 12;
-         num += getRegister(arg1) << 9;
-         num += getRegister(arg2) << 6;
-         num += idBits << 4;
-         num += toNum(arg3) & 0xF;
-         return num;
-      }
+    
+    return num;
+}
 
-      uint16_t trapInstruction(int opcode, char* arg1){
-        uint16_t num = 0;
-        num += opcode << 12;
-        num += toNum(arg1) & 0xFF;
-        return num;
-      }
+int leaInstruction(int opcode, char* arg1, char* arg2, int currAddr){
+    int num = 0;
+    num += opcode << 12;
+    num += getRegister(arg1) << 9;
+    
 
-      uint16_t brInstruction(int opcode, char* arg1, char* conditionBits){
-        uint16_t num = 0;
-        int bits = ((strchr(conditionBits, 'n') ? 1 : 0) << 2) + ((strchr(conditionBits, 'z') ? 1 : 0) << 1) + ((strchr(conditionBits, 'p') ? 1 : 0) << 0);
-        num += 0x0 << 12;
-        num += bits << 9;
+    if(arg2[0] == '#' || arg2[0] == 'x') {
+        num += toNum(arg2) & 0x1FF;
+    } else {
+
+        int symAddr = findSymbol(arg2);
+        if(symAddr == -1) {
+            printf("Error: undefined symbol '%s'\n", arg2);
+            exit(4);
+        }
+
+        int offset = (symAddr - (currAddr + 2)) / 2;
+
+        if(offset < -256 || offset > 255) {
+            printf("Error: LEA offset out of range\n");
+            exit(4);
+        }
+        num += offset & 0x1FF;
+    }
+    
+    return num;
+}
+
+int notInstruction(int opcode, char* arg1, char* arg2){
+    int num = 0;
+    num += opcode << 12;
+    num += getRegister(arg1) << 9;
+    num += getRegister(arg2) << 6;
+    num += 0x3F; 
+    return num;
+}
+
+int retrtiInstruction(int opcode, char* arg1, char* arg2){
+    int num = 0;
+    num += opcode << 12;
+    if(opcode == 0xC) num += 0x7 << 6; 
+    return num;
+}
+
+int lshrshInstruction(int opcode, char* arg1, char* arg2, char* arg3, int idBits){
+    int num = 0;
+    num |= (opcode & 0xF) << 12;  
+    num |= (getRegister(arg1) & 0x7) << 9; 
+    num |= (getRegister(arg2) & 0x7) << 6;
+    num |= (idBits & 0x3) << 4;        
+    num |= (toNum(arg3) & 0xF); 
+    return num;
+}
+
+int trapInstruction(int opcode, char* arg1){
+    int num = 0;
+    num += opcode << 12;
+    num += toNum(arg1) & 0xFF;
+    return num;
+}
+
+int brInstruction(int opcode, char* arg1, char* conditionBits, int currAddr){
+    int num = 0;
+    int bits = ((strchr(conditionBits, 'n') ? 1 : 0) << 2) +
+               ((strchr(conditionBits, 'z') ? 1 : 0) << 1) +
+               ((strchr(conditionBits, 'p') ? 1 : 0) << 0);
+    num += 0x0 << 12;
+    num += bits << 9;
+
+    if(arg1[0] == '#' || arg1[0] == 'x') {
         num += toNum(arg1) & 0x1FF;
-        printf("BR instruction: opcode=0x%X, bits=0x%X, arg1=%s, num=0x%X\n", opcode, bits, arg1, num);
-        return num;
-      }
+    } else {
 
-int getRegister(char *regStr) {
-    if (regStr == NULL) return -1;
+        int symAddr = findSymbol(arg1);
+        if(symAddr == -1) {
+            printf("Error: undefined symbol '%s'\n", arg1);
+            exit(4);
+        }
+        int offset = (symAddr - (currAddr + 2)) / 2;
 
-    if ((regStr[0] == 'R' || regStr[0] == 'r') && isdigit(regStr[1])) {
-        int regNum = regStr[1] - '0';
-        if (regNum >= 0 && regNum < 8)
-            return regNum;
+        if(offset < -256 || offset > 255) {
+            printf("Error: BR offset out of range\n");
+            exit(4);
+        }
+        num += offset & 0x1FF;
     }
-
-    printf("Error: invalid register %s\n", regStr);
-    exit(4); 
+    
+    return num;
 }
 
-int getImmediate(char *immStr, int bitCount) {
-    int val = toNum(immStr);
-    int minVal = -(1 << (bitCount - 1));
-    int maxVal =  (1 << (bitCount - 1)) - 1;
-
-    if(val < minVal || val > maxVal){
-        printf("Error: immediate value %d out of range for %d-bit field\n", val, bitCount);
+int getRegister(char *reg) {
+    if(reg[0] != 'r' && reg[0] != 'R') {
+        printf("Error: invalid register %s\n", reg);
         exit(4);
     }
-    return val & ((1 << bitCount) - 1);
+    int r = atoi(reg + 1);
+    if(r < 0 || r > 7) {
+        printf("Error: invalid register %s\n", reg);
+        exit(4);
+    }
+    return r;
+
 }
 
-int main(int argc, char *argv[]) {
-    FILE *infile = NULL, *outfile = NULL;
-
-    if (argc < 3) {
-        printf("Usage: %s <input file> <output file>\n", argv[0]);
+int main(int argc, char* argv[]) {
+    if(argc != 3) {
+        printf("Error: usage: %s <input file> <output file>\n", argv[0]);
         exit(4);
     }
-
-    infile = fopen(argv[1], "r");
-    outfile = fopen(argv[2], "w");
+    
+    FILE *infile = fopen(argv[1], "r");
+    FILE *outfile = fopen(argv[2], "w");
+    
     if (!infile) {
         printf("Error: Cannot open file %s\n", argv[1]);
         exit(4);
@@ -452,12 +498,15 @@ int main(int argc, char *argv[]) {
         printf("Error: Cannot open file %s\n", argv[2]);
         exit(4);
     }
-
+    
     firstPass(infile, outfile);
+    
     rewind(infile);
+    
     secondPass(infile, outfile);
-
+    
     fclose(infile);
     fclose(outfile);
+    
     return 0;
 }
