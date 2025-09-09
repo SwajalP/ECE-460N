@@ -6,6 +6,9 @@
 #include <string.h>
 #include <ctype.h>
 #include <limits.h>
+#include <stdint.h>
+#include <stdbool.h>
+
 
 #define MAX_LINE_LENGTH 255
 
@@ -22,6 +25,7 @@ void firstPass(FILE *infile, FILE *outfile);
 void secondPass(FILE *infile, FILE *outfile);
 int assembleInstruction(char *opcode, char *arg1, char *arg2,
                         char *arg3, char *arg4);
+int getRegister(char *regStr);
 uint16_t addandxorInstruction(int opcode, char* arg1, char* arg2, char* arg3);
 uint16_t jmpjsrrInstruction(int opcode, char* arg1, char* arg2, char* arg3);
 uint16_t jsrInstruction(int opcode, char* arg1);

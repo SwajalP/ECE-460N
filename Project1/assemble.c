@@ -4,10 +4,8 @@
 #include <ctype.h>
 #include <limits.h>
 #include "assemble.h"
-#include <cstdint>
 
 #define MAX_LINE_LENGTH 255
-enum { DONE, OK, EMPTY_LINE };
 
 int toNum(char *pStr) {
     char *t_ptr;
@@ -156,7 +154,7 @@ int findSymbol(char *label) {
     return -1;
 }
 
-void firstPass(FILE *infile) {
+void firstPass(FILE *infile, FILE *outfile) {
     char line[MAX_LINE_LENGTH + 1];
     char *label, *opcode, *arg1, *arg2, *arg3, *arg4;
     int ret; 
@@ -170,6 +168,7 @@ void firstPass(FILE *infile) {
 
         if(strcmp(opcode, ".orig") == 0){
             PC = toNum(arg1);
+            fprintf(outfile, "0x%04X\n", PC);
             startedCode = true;
             continue;
         }
@@ -218,26 +217,26 @@ void secondPass(FILE *infile, FILE *outfile) {
             uint16_t address3 = findSymbol(arg3);
             uint16_t address4 = findSymbol(arg4);
 
-            char placeholderNum1[16];
-            char placeholderNum2[16];
-            char placeholderNum3[16];
-            char placeholderNum4[16];
+            char placeholderNum1[17];
+            char placeholderNum2[17];
+            char placeholderNum3[17];
+            char placeholderNum4[17];
 
             //Filling in the labels with addresses if we could find one
             if(address1 != -1){
-                sprintf(placeholderNum1, "%d", address1);
+                sprintf(placeholderNum1, "#%d", address1);
                 arg1 = placeholderNum1;
             }
             if(address2 != -1){
-                sprintf(placeholderNum2, "%d", address2);
+                sprintf(placeholderNum2, "#%d", address2);
                 arg2 = placeholderNum2;
             }
             if(address3 != -1){
-                sprintf(placeholderNum3, "%d", address3);
+                sprintf(placeholderNum3, "#%d", address3);
                 arg3 = placeholderNum3;
             }
             if(address4 != -1){
-                sprintf(placeholderNum4, "%d", address4);
+                sprintf(placeholderNum4, "#%d", address4);
                 arg4 = placeholderNum4;
             }
 
@@ -245,49 +244,55 @@ void secondPass(FILE *infile, FILE *outfile) {
             uint16_t printedCode = 0;
 
             if(strcmp(opcode, "add") == 0) {
+                fprintf(outfile, "Got to add");
+                fprintf(stderr, "DEBUG add: arg1='%s' arg2='%s' arg3='%s'\n", arg1, arg2, arg3);
                 printedCode = addandxorInstruction(0x1, arg1, arg2, arg3);
+                fprintf(outfile, "finshed add?");
             } else if(strcmp(opcode, "and") == 0) {
                 printedCode = addandxorInstruction(0x1, arg1, arg2, arg3);
-            } else if(strstr(opcode, "br") == 0) {
-                
+            } else if(strncmp(opcode, "br", 2) == 0) {
+                printedCode = brInstruction(0x0, arg1, opcode + 2);
             } else if(strcmp(opcode, "jmp") == 0) {
-
+                printedCode = jmpjsrrInstruction(0xC, arg1, arg2, arg3);
             } else if(strcmp(opcode, "jsr") == 0) {
-
+                printedCode = jsrInstruction(0x4, arg1);
             } else if(strcmp(opcode, "jsrr") == 0) {
-
+                printedCode = jmpjsrrInstruction(0x4, arg1, arg2, arg3);
             } else if(strcmp(opcode, "ldb") == 0) {
-
+                printedCode = ldbldwstbstwInstruction(0x2, arg1, arg2, arg3);
             } else if(strcmp(opcode, "ldw") == 0) {
-
+                printedCode = ldbldwstbstwInstruction(0x6, arg1, arg2, arg3);
             } else if(strcmp(opcode, "lea") == 0) {
-
+                printedCode = leaInstruction(0xE, arg1, arg2);
             } else if(strcmp(opcode, "not") == 0) {
-
+                printedCode = notInstruction(0x9, arg1, arg2);
             } else if(strcmp(opcode, "ret") == 0) {
-
+                printedCode = retrtiInstruction(0xC, arg1, arg2);
             } else if(strcmp(opcode, "rti") == 0) {
-
+                printedCode = retrtiInstruction(0x8, arg1, arg2);
             } else if(strcmp(opcode, "lshf") == 0) {
-
+                printedCode = lshrshIntruction(0xD, arg1, arg2, arg3, 0x0);
             } else if(strcmp(opcode, "rshfl") == 0) {
-
+                printedCode = lshrshIntruction(0xD, arg1, arg2, arg3, 0x1);
             } else if(strcmp(opcode, "rshfa") == 0) {
-
+                printedCode = lshrshIntruction(0xD, arg1, arg2, arg3, 0x3);
             } else if(strcmp(opcode, "stb") == 0) {
-
+                printedCode = ldbldwstbstwInstruction(0x3, arg1, arg2, arg3);
             } else if(strcmp(opcode, "stw") == 0) {
-
+                printedCode = ldbldwstbstwInstruction(0x7, arg1, arg2, arg3);
             } else if(strcmp(opcode, "trap") == 0) {
-
+                printedCode = trapInstruction(0xF, arg1);
             } else if(strcmp(opcode, "xor") == 0) {
-
+                printedCode = addandxorInstruction(0x9, arg1, arg2, arg3);
             } else {
                 // invalid opcode
                 //Delete this later
                 printf("Invalid Opcode!");
                 exit(4);
             }
+
+            fprintf(outfile, "0x%04X\n", printedCode); //Printing number as hex
+
 
         }
     }
@@ -297,21 +302,24 @@ void secondPass(FILE *infile, FILE *outfile) {
     uint16_t addandxorInstruction(int opcode, char* arg1, char* arg2, char* arg3){
          uint16_t num = 0;
          num += opcode << 12;
-         num += toNum(++arg1) << 9;
-         num += toNum(++arg2) << 6;
+         num += getRegister(arg1) << 9;
+         num += getRegister(arg2) << 6;
 
          if(arg3[0] == 'r'){
-            num += toNum(++arg3);
+            num += getRegister(arg3);
          }else{
             num += 1 << 5;
             num += toNum(arg3);
          }
+
+         return num;
       }
 
     uint16_t jmpjsrrInstruction(int opcode, char* arg1, char* arg2, char* arg3){
         uint16_t num = 0;
         num += opcode << 12;
-        num += toNum(++arg1) << 6;
+        num += getRegister(arg1) << 6;
+        return num;
     }
 
     uint16_t jsrInstruction(int opcode, char* arg1){
@@ -319,30 +327,34 @@ void secondPass(FILE *infile, FILE *outfile) {
         num += opcode << 12;
         num += 1 << 11;
         num += toNum(arg1);
+        return num;
     }
 
     uint16_t ldbldwstbstwInstruction(int opcode, char* arg1, char* arg2, char* arg3){
          uint16_t num = 0;
          num += opcode << 12;
-         num += toNum(++arg1) << 9;
-         num += toNum(++arg2) << 6;
+         num += getRegister(arg1) << 9;
+         num += getRegister(arg2) << 6;
          num += toNum(arg3);
+         return num;
       }
 
       uint16_t leaInstruction(int opcode, char* arg1, char* arg2){
          uint16_t num = 0;
          num += opcode << 12;
-         num += toNum(++arg1) << 9;
+         num += getRegister(arg1) << 9;
          num += toNum(arg2);
+         return num;
       }
 
       uint16_t notInstruction(int opcode, char* arg1, char* arg2){
          uint16_t num = 0;
          num += opcode << 12;
-         num += toNum(++arg1) << 9;
-         num += toNum(++arg2) << 6;
+         num += getRegister(arg1) << 9;
+         num += getRegister(arg2) << 6;
          num += 1 << 5;
          num += 0x1F;
+         return num;
       }
 
       uint16_t retrtiInstruction(int opcode, char* arg1, char* arg2){
@@ -351,21 +363,24 @@ void secondPass(FILE *infile, FILE *outfile) {
          if(opcode == 0xC){
             num += 0x7 << 6;
          }
+         return num;
       }
 
       uint16_t lshrshIntruction(int opcode, char* arg1, char* arg2, char* arg3, int idBits){
          uint16_t num = 0;
          num += opcode << 12;
-         num += toNum(++arg1) << 9;
-         num += toNum(++arg2) << 6;
+         num += getRegister(arg1) << 9;
+         num += getRegister(arg2) << 6;
          num += idBits << 4;
          num += toNum(arg3);
+         return num;
       }
 
       uint16_t trapInstruction(int opcode, char* arg1){
         uint16_t num = 0;
         num += opcode << 12;
         num += toNum(arg1);
+        return num;
       }
 
       uint16_t brInstruction(int opcode, char* arg1, char* conditionBits){
@@ -374,6 +389,7 @@ void secondPass(FILE *infile, FILE *outfile) {
         num += opcode << 12;
         num += bits << 9;
         num += toNum(arg1);
+        return num;
       }
 
 int getRegister(char *regStr) {
@@ -420,7 +436,7 @@ int main(int argc, char *argv[]) {
         exit(4);
     }
 
-    firstPass(infile);
+    firstPass(infile, outfile);
     rewind(infile);
     secondPass(infile, outfile);
 
