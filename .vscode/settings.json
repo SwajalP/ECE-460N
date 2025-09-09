@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "assemble.h": "c",
+        "limits.h": "c"
+    }
+}
