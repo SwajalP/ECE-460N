@@ -18,9 +18,19 @@ int readAndParse(FILE *pInfile, char *pLine,
                  char **pArg3, char **pArg4);
 int isOpcode(char *str);
 
-void firstPass(FILE *infile);
+void firstPass(FILE *infile, FILE *outfile);
 void secondPass(FILE *infile, FILE *outfile);
 int assembleInstruction(char *opcode, char *arg1, char *arg2,
                         char *arg3, char *arg4);
+uint16_t addandxorInstruction(int opcode, char* arg1, char* arg2, char* arg3);
+uint16_t jmpjsrrInstruction(int opcode, char* arg1, char* arg2, char* arg3);
+uint16_t jsrInstruction(int opcode, char* arg1);
+uint16_t ldbldwstbstwInstruction(int opcode, char* arg1, char* arg2, char* arg3);
+uint16_t leaInstruction(int opcode, char* arg1, char* arg2);
+uint16_t notInstruction(int opcode, char* arg1, char* arg2);
+uint16_t retrtiInstruction(int opcode, char* arg1, char* arg2);
+uint16_t lshrshIntruction(int opcode, char* arg1, char* arg2, char* arg3, int idBits);
+uint16_t trapInstruction(int opcode, char* arg1);
+uint16_t brInstruction(int opcode, char* arg1, char* conditionBits);
 
 #endif

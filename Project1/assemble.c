@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include "assemble.h"
+#include <cstdint>
 
 #define MAX_LINE_LENGTH 255
 enum { DONE, OK, EMPTY_LINE };
@@ -160,6 +161,7 @@ void firstPass(FILE *infile) {
     char *label, *opcode, *arg1, *arg2, *arg3, *arg4;
     int ret; 
     int PC = 0;
+    bool startedCode = false;
 
     while(1){
          ret = readAndParse(infile, line, &label, &opcode, &arg1, &arg2, &arg3, &arg4);
@@ -168,6 +170,7 @@ void firstPass(FILE *infile) {
 
         if(strcmp(opcode, ".orig") == 0){
             PC = toNum(arg1);
+            startedCode = true;
             continue;
         }
 
@@ -175,21 +178,119 @@ void firstPass(FILE *infile) {
             break;
         }
 
-        if(label[0] != '\0'){
+        if(label[0] != '\0' && startedCode){
             addSymbol(label, PC);
         }
 
-        if (strcmp(opcode, ".blkw") == 0) {
-            PC += toNum(arg1);
-        } else if (strcmp(opcode, ".stringz") == 0) {
-            PC += (int)strlen(arg1) + 1;  
-        } else {
-            PC++;
-        }
+
+        // if (strcmp(opcode, ".blkw") == 0) {
+        //     PC += toNum(arg1);
+        // } else if (strcmp(opcode, ".stringz") == 0) {
+        //     PC += (int)strlen(arg1) + 1;  
+        // } else {
+        //     PC++;
+        // }
     }
 }
 
 void secondPass(FILE *infile, FILE *outfile) {
+    bool startedCode = false;
+    char line[MAX_LINE_LENGTH + 1];
+    char *label, *opcode, *arg1, *arg2, *arg3, *arg4;
+    int ret; 
+     while(1){
+         ret = readAndParse(infile, line, &label, &opcode, &arg1, &arg2, &arg3, &arg4);
+        if(ret == DONE) break;
+        if(ret == EMPTY_LINE) continue;
+
+        if(strcmp(opcode, ".orig") == 0){
+            startedCode = true;
+            continue;
+        }
+
+        if(strcmp(opcode, ".end") == 0){
+            break;
+        }
+
+        if(startedCode && opcode != NULL){
+            uint16_t address1 = findSymbol(arg1);
+            uint16_t address2 = findSymbol(arg2);
+            uint16_t address3 = findSymbol(arg3);
+            uint16_t address4 = findSymbol(arg4);
+
+            char placeholderNum1[16];
+            char placeholderNum2[16];
+            char placeholderNum3[16];
+            char placeholderNum4[16];
+
+            //Filling in the labels with addresses if we could find one
+            if(address1 != -1){
+                sprintf(placeholderNum1, "%d", address1);
+                arg1 = placeholderNum1;
+            }
+            if(address2 != -1){
+                sprintf(placeholderNum2, "%d", address2);
+                arg2 = placeholderNum2;
+            }
+            if(address3 != -1){
+                sprintf(placeholderNum3, "%d", address3);
+                arg3 = placeholderNum3;
+            }
+            if(address4 != -1){
+                sprintf(placeholderNum4, "%d", address4);
+                arg4 = placeholderNum4;
+            }
+
+            //Calling all the opcodes now
+            uint16_t printedCode = 0;
+
+            if(strcmp(opcode, "add") == 0) {
+                printedCode = addandxorInstruction(0x1, arg1, arg2, arg3);
+            } else if(strcmp(opcode, "and") == 0) {
+                printedCode = addandxorInstruction(0x1, arg1, arg2, arg3);
+            } else if(strstr(opcode, "br") == 0) {
+                
+            } else if(strcmp(opcode, "jmp") == 0) {
+
+            } else if(strcmp(opcode, "jsr") == 0) {
+
+            } else if(strcmp(opcode, "jsrr") == 0) {
+
+            } else if(strcmp(opcode, "ldb") == 0) {
+
+            } else if(strcmp(opcode, "ldw") == 0) {
+
+            } else if(strcmp(opcode, "lea") == 0) {
+
+            } else if(strcmp(opcode, "not") == 0) {
+
+            } else if(strcmp(opcode, "ret") == 0) {
+
+            } else if(strcmp(opcode, "rti") == 0) {
+
+            } else if(strcmp(opcode, "lshf") == 0) {
+
+            } else if(strcmp(opcode, "rshfl") == 0) {
+
+            } else if(strcmp(opcode, "rshfa") == 0) {
+
+            } else if(strcmp(opcode, "stb") == 0) {
+
+            } else if(strcmp(opcode, "stw") == 0) {
+
+            } else if(strcmp(opcode, "trap") == 0) {
+
+            } else if(strcmp(opcode, "xor") == 0) {
+
+            } else {
+                // invalid opcode
+                //Delete this later
+                printf("Invalid Opcode!");
+                exit(4);
+            }
+
+        }
+    }
 
 }
 
@@ -244,15 +345,6 @@ void secondPass(FILE *infile, FILE *outfile) {
          num += 0x1F;
       }
 
-      uint16_t notInstruction(int opcode, char* arg1, char* arg2){
-         uint16_t num = 0;
-         num += opcode << 12;
-         num += toNum(++arg1) << 9;
-         num += toNum(++arg2) << 6;
-         num += 1 << 5;
-         num += 0x1F;
-      }
-
       uint16_t retrtiInstruction(int opcode, char* arg1, char* arg2){
          uint16_t num = 0;
          num += opcode << 12;
@@ -270,29 +362,19 @@ void secondPass(FILE *infile, FILE *outfile) {
          num += toNum(arg3);
       }
 
-      uint16_t lshrshIntruction(int opcode, char* arg1, char* arg2, char* arg3, int idBits){
-         uint16_t num = 0;
-         num += opcode << 12;
-         num += toNum(++arg1) << 9;
-         num += toNum(++arg2) << 6;
-         num += idBits << 4;
-         num += toNum(arg3);
-      }
-
       uint16_t trapInstruction(int opcode, char* arg1){
         uint16_t num = 0;
         num += opcode << 12;
         num += toNum(arg1);
       }
 
-
-
-
-
-
-
-
-
+      uint16_t brInstruction(int opcode, char* arg1, char* conditionBits){
+        uint16_t num = 0;
+        int bits = ((strchr(conditionBits, 'n') ? 1 : 0) << 2) + ((strchr(conditionBits, 'z') ? 1 : 0) << 1) + ((strchr(conditionBits, 'p') ? 1 : 0) << 0);
+        num += opcode << 12;
+        num += bits << 9;
+        num += toNum(arg1);
+      }
 
 int getRegister(char *regStr) {
     if (regStr == NULL) return -1;
