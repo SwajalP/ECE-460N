@@ -326,7 +326,7 @@ void secondPass(FILE *infile, FILE *outfile) {
             num += getRegister(arg3);
          }else{
             num += 1 << 5;
-            num += toNum(arg3);
+            num += toNum(arg3) & 0x1F;
          }
          return num;
       }
@@ -351,7 +351,7 @@ void secondPass(FILE *infile, FILE *outfile) {
          num += opcode << 12;
          num += getRegister(arg1) << 9;
          num += getRegister(arg2) << 6;
-         num += toNum(arg3);
+         num += toNum(arg3) & 0x3F;
          return num;
       }
 
@@ -359,7 +359,7 @@ void secondPass(FILE *infile, FILE *outfile) {
          uint16_t num = 0;
          num += opcode << 12;
          num += getRegister(arg1) << 9;
-         num += toNum(arg2);
+         num += toNum(arg2) & 0x1FF;
          return num;
       }
 
@@ -388,23 +388,24 @@ void secondPass(FILE *infile, FILE *outfile) {
          num += getRegister(arg1) << 9;
          num += getRegister(arg2) << 6;
          num += idBits << 4;
-         num += toNum(arg3);
+         num += toNum(arg3) & 0xF;
          return num;
       }
 
       uint16_t trapInstruction(int opcode, char* arg1){
         uint16_t num = 0;
         num += opcode << 12;
-        num += toNum(arg1);
+        num += toNum(arg1) & 0xFF;
         return num;
       }
 
       uint16_t brInstruction(int opcode, char* arg1, char* conditionBits){
         uint16_t num = 0;
         int bits = ((strchr(conditionBits, 'n') ? 1 : 0) << 2) + ((strchr(conditionBits, 'z') ? 1 : 0) << 1) + ((strchr(conditionBits, 'p') ? 1 : 0) << 0);
-        num += opcode << 12;
+        num += 0x0 << 12;
         num += bits << 9;
-        num += toNum(arg1);
+        num += toNum(arg1) & 0x1FF;
+        printf("BR instruction: opcode=0x%X, bits=0x%X, arg1=%s, num=0x%X\n", opcode, bits, arg1, num);
         return num;
       }
 
